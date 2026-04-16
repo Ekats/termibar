@@ -1,0 +1,14 @@
+plugin/build/
+*.o
+*.so
+*.a
+moc_*
+qrc_*
+*_autogen/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+.mycelica.db
+CLAUDE.md
+DESIGN.md

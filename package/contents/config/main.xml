@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<kcfg
+    xmlns="http://www.kde.org/standards/kcfg/2.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.kde.org/standards/kcfg/2.0
+                          http://www.kde.org/standards/kcfg/2.0/kcfg.xsd"
+>
+  <kcfgfile name="" />
+  <group name="General">
+    <entry name="iconName" type="String">
+      <default>utilities-terminal</default>
+    </entry>
+    <entry name="terminalColumns" type="Int">
+      <default>80</default>
+    </entry>
+    <entry name="terminalRows" type="Int">
+      <default>24</default>
+    </entry>
+    <entry name="fontFamily" type="String">
+      <default>Monospace</default>
+    </entry>
+    <entry name="fontSize" type="Int">
+      <default>10</default>
+    </entry>
+    <entry name="closeOnExit" type="Bool">
+      <default>false</default>
+    </entry>
+    <entry name="disableAnimation" type="Bool">
+      <default>false</default>
+    </entry>
+    <!-- JSON-encoded array of terminal entries -->
+    <entry name="terminals" type="String">
+      <default />
+    </entry>
+  </group>
+</kcfg>
