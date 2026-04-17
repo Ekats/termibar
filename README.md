@@ -19,19 +19,19 @@ KDE Plasma 6 plasmoid that pins TUI applications to your panel. Close the popup,
 
 - KDE Plasma 6 (>= 6.0)
 - Qt 6 (>= 6.8)
-- `konsole-kpart` — Konsole terminal KPart plugin
+- Konsole KPart (`konsole-kpart` on Debian, `konsole` on Arch)
 
 ### Build
 
 ```bash
-# Debian/Ubuntu
-sudo apt install qt6-declarative-dev extra-cmake-modules libkf6parts-dev
-
-# Fedora
-sudo dnf install qt6-qtdeclarative-devel extra-cmake-modules kf6-kparts-devel
+# Debian/Ubuntu/KDE Neon
+sudo apt install cmake qt6-base-dev qt6-declarative-dev extra-cmake-modules libkf6parts-dev
 
 # Arch
-sudo pacman -S qt6-declarative extra-cmake-modules kparts
+sudo pacman -S cmake qt6-base qt6-declarative extra-cmake-modules kparts
+
+# Fedora
+sudo dnf install cmake qt6-qtbase-devel qt6-qtdeclarative-devel extra-cmake-modules kf6-kparts-devel
 ```
 
 ## Install
