@@ -10,6 +10,7 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 include(KDEInstallDirs)
 
 set(QT_MAJOR_VERSION 6)
+set(QT_DEFAULT_MAJOR_VERSION 6)
 find_package(Qt6 REQUIRED COMPONENTS Core Quick Widgets)
 find_package(KF6 REQUIRED COMPONENTS Parts)
 
