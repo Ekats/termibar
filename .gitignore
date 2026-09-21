@@ -12,3 +12,16 @@ Makefile
 .mycelica.db
 CLAUDE.md
 DESIGN.md
+.mco/MCA_GUIDE.md
+.mco/bug-protocol.md
+.mco/graph.db
+.mco/MCA_COMMANDS.md
+.mco/MCP_GUIDE.md
+.mco/graph.db-wal
+.mco/graph.db-shm
+.mco/.seed-manifest.json
+.mco.db
+.mco.db-wal
+.mco.db-shm
+.mcp.json
+docs/MCA_COMMANDS.md
