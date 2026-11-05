@@ -28,7 +28,7 @@ public:
 Q_SIGNALS:
     void commandChanged();
     void workingDirectoryChanged();
-    void exited(int code);
+    void exited();
 
 protected:
     void geometryChange(const QRectF &newGeom, const QRectF &oldGeom) override;
@@ -52,7 +52,7 @@ private:
     KParts::ReadOnlyPart *m_part = nullptr;
     QPointer<QWidget> m_partWidget;
     QPointer<QWidget> m_termDisplay;
-    QWindow *m_embeddedWindow = nullptr;
+    QPointer<QWindow> m_embeddedWindow;
     QPointer<QQuickWindow> m_watchedWindow;
     bool m_started = false;
 };

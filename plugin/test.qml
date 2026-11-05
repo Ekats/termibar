@@ -21,8 +21,8 @@ Window {
             terminal.forceActiveFocus()
         }
 
-        onExited: (code) => {
-            console.log("Terminal exited with code:", code)
+        onExited: {
+            console.log("Terminal exited")
             Qt.quit()
         }
     }

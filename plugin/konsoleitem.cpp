@@ -45,7 +45,12 @@ KonsoleItem::KonsoleItem(QQuickItem *parent)
 KonsoleItem::~KonsoleItem()
 {
     detachWidget();
-    delete m_part;
+    if (m_part) {
+        // Same reason as in shutdown(): don't emit exited() while this item is
+        // being torn down.
+        disconnect(m_part, &QObject::destroyed, this, nullptr);
+        delete m_part;
+    }
 }
 
 void KonsoleItem::setCommand(const QString &cmd)
@@ -92,7 +97,11 @@ void KonsoleItem::start()
 
     auto *termIface = qobject_cast<TerminalInterface *>(m_part);
     if (termIface) {
-        QString dir = m_workingDir.isEmpty() ? QDir::homePath() : m_workingDir;
+        QString dir = m_workingDir;
+        if (dir.startsWith(QLatin1Char('~')))
+            dir = QDir::homePath() + dir.mid(1);
+        if (dir.isEmpty())
+            dir = QDir::homePath();
         if (m_command.isEmpty() || m_command == QLatin1String("/bin/bash")) {
             termIface->showShellInDir(dir);
         } else {
@@ -100,17 +109,28 @@ void KonsoleItem::start()
             if (cmd.startsWith(QLatin1Char('~')))
                 cmd = QDir::homePath() + cmd.mid(1);
             QString shell = qEnvironmentVariable("SHELL", QStringLiteral("/bin/sh"));
+            // startProgram takes no working directory, so cd there first.
+            QString quotedDir = dir;
+            quotedDir.replace(QLatin1String("'"), QLatin1String("'\\''"));
+            cmd = QStringLiteral("cd '%1' && %2").arg(quotedDir, cmd);
+            // -i matters: PATH additions for user-installed tools (~/.local/bin,
+            // pipx, cargo, nvm) usually live in the interactive rc file (.zshrc,
+            // .bashrc), which a non-interactive shell never reads. Without it,
+            // anything outside the system PATH dies with "command not found"
+            // the moment the session starts.
             qDebug() << "Termibar: startProgram cmd:" << cmd << "shell:" << shell;
-            termIface->startProgram(shell, {shell, QStringLiteral("-lc"), cmd});
+            termIface->startProgram(shell, {shell, QStringLiteral("-lic"), cmd});
         }
     }
 
     connect(m_part, &QObject::destroyed, this, [this]() {
         detachWidget();
         m_part = nullptr;
-        // m_partWidget auto-nulls via QPointer when widget is destroyed with the part
+        // ~KParts::Part deletes the widget before ~QObject emits destroyed(),
+        // so m_partWidget and m_embeddedWindow are already null here — both are
+        // QPointers precisely because this runs after the widget is gone.
         m_started = false;
-        Q_EMIT exited(0);
+        Q_EMIT exited();
     });
 
     m_started = true;
@@ -162,7 +182,13 @@ void KonsoleItem::embedWidget()
             this, &KonsoleItem::onWindowVisibleChanged,
             Qt::UniqueConnection);
 
-    m_partWidget->show();
+    // Only show if this item is actually visible — a session started while its
+    // tab is inactive (e.g. several autostart terminals) must not put its
+    // subsurface on top of the active terminal. ItemVisibleHasChanged shows it
+    // when the tab becomes current.
+    const bool itemVisible = isVisible();
+    if (itemVisible)
+        m_partWidget->show();
 
     m_termDisplay = findTerminalDisplay(m_partWidget);
     if (m_termDisplay)
@@ -173,7 +199,8 @@ void KonsoleItem::embedWidget()
     // Grab QML keyboard focus so keyPressEvent forwards to the terminal.
     // This fires focusInEvent, which sends FocusIn to m_termDisplay so
     // Konsole's TerminalDisplay starts processing key events.
-    forceActiveFocus(Qt::OtherFocusReason);
+    if (itemVisible)
+        forceActiveFocus(Qt::OtherFocusReason);
 }
 
 void KonsoleItem::syncWidgetGeometry()
@@ -252,7 +279,22 @@ void KonsoleItem::itemChange(ItemChange change, const ItemChangeData &value)
 
 void KonsoleItem::onWindowVisibleChanged(bool visible)
 {
-    if (!visible || !m_partWidget || !m_watchedWindow || !m_embeddedWindow)
+    if (!m_partWidget)
+        return;
+
+    if (!visible) {
+        // Plasma only hides the popup window, it does not close it, so nothing
+        // else takes the part widget down. Left shown it stays a visible
+        // top-level QWidget whose QWindow we have reparented away, and that
+        // makes QApplication refuse to quit — SIGTERM, logout and
+        // `killall plasmashell` are all ignored until the session ends. Hiding
+        // costs nothing here (the popup surface is gone anyway) and does not
+        // touch the running process.
+        m_partWidget->hide();
+        return;
+    }
+
+    if (!m_watchedWindow || !m_embeddedWindow)
         return;
 
     // Re-parent subsurface into the new Wayland parent surface.
