@@ -213,7 +213,7 @@ PlasmoidItem {
     onTerminalsConfigChanged: reconcileSessions()
 
     onExpandedChanged: {
-        if (expanded) {
+        if (root.expanded) {
             for (let i = 0; i < sessionsModel.count; i++) {
                 if (sessionsModel.get(i).sessionState === stateBackgrounded) {
                     setSessionState(i, stateRunning);
@@ -340,54 +340,76 @@ PlasmoidItem {
             visible: sessionsModel.count > 1
             height: visible ? implicitHeight : 0
 
-            RowLayout {
-                anchors.fill: parent
-                spacing: Kirigami.Units.smallSpacing
+            // TabButton's own contentItem must stay in place (its internals
+            // reach into contentItem.label) and it must sit in a TabBar (its
+            // focus binding reads TabBar.tabBar), so the state dot is a plain
+            // child in the left padding rather than part of the content.
+            PlasmaComponents.TabBar {
+                id: tabBar
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: Math.min(parent.width, sessionsModel.count * Kirigami.Units.gridUnit * 8)
+
+                // activeSessionIndex is the single source of truth; the bar only
+                // mirrors it and owns checked. The bar writes currentIndex itself
+                // (clicks, its ListView resetting to 0 after it fills, arrow keys,
+                // tab removal), which would destroy a plain property binding, so a
+                // Binding element re-asserts on every activeSessionIndex change and
+                // followActive() snaps any other move back. Clicks reach
+                // activeSessionIndex through onClicked below.
+                Binding {
+                    target: tabBar
+                    property: "currentIndex"
+                    value: root.activeSessionIndex
+                    when: tabBar.count === sessionsModel.count
+                }
+                function followActive() {
+                    if (count !== sessionsModel.count)
+                        return;
+                    if (currentIndex !== root.activeSessionIndex)
+                        currentIndex = root.activeSessionIndex;
+                    // Removing the current tab at index 0 leaves currentIndex at 0
+                    // without checking the tab that slid into place.
+                    if (currentItem)
+                        currentItem.checked = true;
+                }
+                onCurrentIndexChanged: Qt.callLater(followActive)
+                onCountChanged: Qt.callLater(followActive)
 
                 Repeater {
                     model: sessionsModel
 
                     PlasmaComponents.TabButton {
-                        Layout.fillWidth: true
-                        Layout.maximumWidth: Kirigami.Units.gridUnit * 8
+                        leftPadding: Kirigami.Units.smallSpacing * 2 + stateDot.width
 
-                        checked: root.activeSessionIndex === index
                         text: model.name
+                        icon.name: model.icon
+                        icon.width: Kirigami.Units.iconSizes.small
+                        icon.height: Kirigami.Units.iconSizes.small
 
                         onClicked: {
                             root.activeSessionIndex = index;
                         }
 
-                        contentItem: RowLayout {
-                            spacing: Kirigami.Units.smallSpacing
-
-                            Rectangle {
-                                width: Kirigami.Units.smallSpacing * 1.5
-                                height: width
-                                radius: width / 2
-                                color: {
-                                    switch (model.sessionState) {
-                                    case root.stateRunning:
-                                    case root.stateBackgrounded:
-                                        return Kirigami.Theme.positiveTextColor;
-                                    case root.stateExited:
-                                        return Kirigami.Theme.negativeTextColor;
-                                    default:
-                                        return Kirigami.Theme.disabledTextColor;
-                                    }
+                        Rectangle {
+                            id: stateDot
+                            anchors.left: parent.left
+                            anchors.leftMargin: Kirigami.Units.smallSpacing
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Kirigami.Units.smallSpacing * 1.5
+                            height: width
+                            radius: width / 2
+                            color: {
+                                switch (model.sessionState) {
+                                case root.stateRunning:
+                                case root.stateBackgrounded:
+                                    return Kirigami.Theme.positiveTextColor;
+                                case root.stateExited:
+                                    return Kirigami.Theme.negativeTextColor;
+                                default:
+                                    return Kirigami.Theme.disabledTextColor;
                                 }
-                            }
-
-                            Kirigami.Icon {
-                                Layout.preferredWidth: Kirigami.Units.iconSizes.small
-                                Layout.preferredHeight: Kirigami.Units.iconSizes.small
-                                source: model.icon
-                            }
-
-                            PlasmaComponents.Label {
-                                text: model.name
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
                             }
                         }
                     }

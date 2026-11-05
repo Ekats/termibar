@@ -79,7 +79,6 @@ Item {
                 text: i18n("Launch")
                 icon.name: "media-playback-start"
                 onClicked: {
-                    console.log("LAUNCH CLICKED, sessionIndex:", sessionRoot.sessionIndex, "currentState:", sessionRoot.currentState);
                     sessionRoot.restartRequested();
                 }
             }
@@ -134,7 +133,6 @@ Item {
                     text: i18n("Restart")
                     icon.name: "view-refresh"
                     onClicked: {
-                        console.log("LAUNCH CLICKED, sessionIndex:", sessionRoot.sessionIndex, "currentState:", sessionRoot.currentState);
                         sessionRoot.restartRequested();
                     }
                 }
