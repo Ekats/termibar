@@ -123,7 +123,12 @@ void KonsoleItem::start()
         }
     }
 
+    // See eventFilter(): the part widget has to be hidden before Qt decides
+    // whether the application may quit.
+    QCoreApplication::instance()->installEventFilter(this);
+
     connect(m_part, &QObject::destroyed, this, [this]() {
+        QCoreApplication::instance()->removeEventFilter(this);
         detachWidget();
         m_part = nullptr;
         // ~KParts::Part deletes the widget before ~QObject emits destroyed(),
@@ -363,6 +368,19 @@ void KonsoleItem::focusInEvent(QFocusEvent *)
 
 bool KonsoleItem::eventFilter(QObject *watched, QEvent *event)
 {
+    if (event->type() == QEvent::Quit && watched == QCoreApplication::instance()) {
+        // On QEvent::Quit, QApplication closes every visible top-level widget
+        // through its QWindow, and QWindow::close() refuses (returns false,
+        // no QCloseEvent) for a window that is not top-level — which ours is
+        // not, since embedWidget() reparents it into the QQuickWindow. One
+        // refusal aborts the quit, so with the popup open SIGTERM, logout and
+        // `killall plasmashell` were ignored. A hidden widget is skipped, and
+        // the app is going away, so hiding it here is enough. Not consumed:
+        // the quit must carry on.
+        if (m_partWidget)
+            m_partWidget->hide();
+        return false;
+    }
     if (watched == m_termDisplay && event->type() == QEvent::FocusOut) {
         auto *fe = static_cast<QFocusEvent *>(event);
         if (fe->reason() != Qt::PopupFocusReason)
@@ -379,6 +397,7 @@ void KonsoleItem::mousePressEvent(QMouseEvent *event)
 
 void KonsoleItem::shutdown()
 {
+    QCoreApplication::instance()->removeEventFilter(this);
     detachWidget();
     if (m_part) {
         // Disconnect the destroyed lambda so it doesn't emit exited() during
