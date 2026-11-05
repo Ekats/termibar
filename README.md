@@ -7,10 +7,10 @@ KDE Plasma 6 plasmoid that pins TUI applications to your panel. Close the popup,
 ## Features
 
 - Multiple terminal tabs in a single widget
-- Per-tab commands — run spotify_player, htop, or any TUI
+- Per-tab commands and working directory — run spotify_player, htop, or any TUI
 - Processes survive popup close/open cycles
 - Per-tab autostart with panel
-- Native KDE icon and font pickers in settings
+- Native KDE icon picker in settings
 - Live config updates without restart
 
 ## Dependencies
@@ -57,7 +57,10 @@ Same script handles updates.
 ## Known Limitations
 
 - Terminal cursor renders hollow (Wayland focus model mismatch — typing works fine)
-- Konsole KPart inherits Konsole's profiles and color schemes
+- Konsole KPart inherits Konsole's profiles and color schemes — font and colors are configured in Konsole, not here
+- Autostart opens the popup once at login: the KPart can only embed into an existing popup window
+- The popup opens at the size set in settings, so dragging its edge works but is not remembered (Plasma's saved popup size is overridden on every open)
+- With the popup open and a session running, plasmashell ignores a graceful quit (SIGTERM, `killall plasmashell`, logout) — the embedded terminal widget blocks it. Close the popup first, or use `killall -9 plasmashell`
 
 ## License
 

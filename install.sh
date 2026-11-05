@@ -23,12 +23,15 @@ rm -rf "$HOME/.local/share/plasma/plasmoids/$PLASMOID_ID"
 kpackagetool6 -t Plasma/Applet -i "$PACKAGE_DIR"
 
 echo "==> Restarting plasmashell..."
-PSPID=$(pgrep -x plasmashell)
+PSPID=$(pgrep -x plasmashell || true)
 kquitapp6 plasmashell 2>/dev/null || true
 sleep 3
 if [ -n "$PSPID" ]; then
-    pkill -KILL -P "$PSPID" 2>/dev/null
-    kill -9 "$PSPID" 2>/dev/null
+    # Both exit non-zero once plasmashell is already gone, which is the normal
+    # case after kquitapp6 — without `|| true` set -e would abort the script
+    # before the restart below.
+    pkill -KILL -P "$PSPID" 2>/dev/null || true
+    kill -9 "$PSPID" 2>/dev/null || true
 fi
 sleep 0.5
 systemctl --user start plasma-plasmashell.service
