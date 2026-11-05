@@ -18,18 +18,54 @@ KCM.SimpleKCM {
         if (terminalList.length === 0) {
             terminalList = [
                 {
+                    id: "1",
                     name: "Terminal",
                     command: "/bin/bash",
+                    workingDirectory: "",
                     icon: "utilities-terminal",
                     autoStart: false
                 }
             ];
             saveList();
+            return;
         }
+        // One-time migration: entries saved before ids existed are identified by
+        // name, so renaming one kills its session. Give them ids.
+        let missing = false;
+        for (let i = 0; i < terminalList.length; i++) {
+            if (!terminalList[i].id) {
+                terminalList[i].id = nextId();
+                missing = true;
+            }
+        }
+        if (missing)
+            saveList();
     }
 
     function saveList() {
         cfg_terminals = JSON.stringify(terminalList);
+    }
+
+    function nextId() {
+        let max = 0;
+        for (let i = 0; i < terminalList.length; i++) {
+            let n = parseInt(terminalList[i].id, 10);
+            if (!isNaN(n) && n > max)
+                max = n;
+        }
+        return String(max + 1);
+    }
+
+    // Names are user-visible tab labels and the identity fallback for
+    // pre-id entries, so don't hand out one that is already taken.
+    function nextName() {
+        let taken = {};
+        for (let i = 0; i < terminalList.length; i++)
+            taken[terminalList[i].name] = true;
+        let n = terminalList.length + 1;
+        while (taken["Terminal " + n])
+            n++;
+        return "Terminal " + n;
     }
 
     Kirigami.FormLayout {
@@ -89,10 +125,26 @@ KCM.SimpleKCM {
                             QQC2.TextField {
                                 Layout.fillWidth: true
                                 text: modelData.command || ""
-                                placeholderText: "/bin/bash"
+                                placeholderText: i18n("e.g. /bin/bash, htop, spotify_player")
                                 font.family: "Monospace"
                                 onTextEdited: {
                                     configRoot.terminalList[index].command = text;
+                                    configRoot.saveList();
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: i18n("Directory:")
+                                Layout.preferredWidth: Kirigami.Units.gridUnit * 5
+                            }
+
+                            QQC2.TextField {
+                                Layout.fillWidth: true
+                                text: modelData.workingDirectory || ""
+                                placeholderText: i18n("$HOME")
+                                font.family: "Monospace"
+                                onTextEdited: {
+                                    configRoot.terminalList[index].workingDirectory = text;
                                     configRoot.saveList();
                                 }
                             }
@@ -115,7 +167,10 @@ KCM.SimpleKCM {
                             QQC2.CheckBox {
                                 text: i18n("Autostart with panel")
                                 checked: modelData.autoStart || false
-                                onCheckedChanged: {
+                                // toggled, not checkedChanged: the latter also fires
+                                // while the delegate is built, writing the config
+                                // (and enabling Apply) on page open.
+                                onToggled: {
                                     configRoot.terminalList[index].autoStart = checked;
                                     configRoot.saveList();
                                 }
@@ -153,8 +208,10 @@ KCM.SimpleKCM {
                 onClicked: {
                     let list = configRoot.terminalList.slice();
                     list.push({
-                        name: "Terminal " + (list.length + 1),
-                        command: i18n("e.g. /bin/bash, htop, spotify_player"),
+                        id: configRoot.nextId(),
+                        name: configRoot.nextName(),
+                        command: "/bin/bash",
+                        workingDirectory: "",
                         icon: "utilities-terminal",
                         autoStart: false
                     });

@@ -25,6 +25,8 @@ PlasmoidItem {
 
     property int activeSessionIndex: 0
     property int runningCount: 0
+    // Resolved once in Component.onCompleted; see Utils.hasTerminalPlugin.
+    property bool pluginAvailable: true
 
     preferredRepresentation: compactRepresentation
     hideOnWindowDeactivate: true
@@ -49,9 +51,15 @@ PlasmoidItem {
         let configs = [];
         let termList = Utils.parseTerminalList(Plasmoid.configuration.terminals);
         for (let i = 0; i < termList.length; i++) {
+            let name = termList[i].name || "Terminal " + (i + 1);
             configs.push({
-                name: termList[i].name || "Terminal " + (i + 1),
-                command: termList[i].command,
+                // Identity used by reconcileSessions. Entries written before ids
+                // existed fall back to their name, i.e. the previous behaviour.
+                key: termList[i].id ? "id:" + termList[i].id : "name:" + name,
+                name: name,
+                // Empty means "just a shell"; the role must stay a string so the
+                // delegate's required property resolves.
+                command: typeof termList[i].command === "string" ? termList[i].command : "",
                 workingDirectory: termList[i].workingDirectory || "",
                 icon: termList[i].icon || "utilities-terminal",
                 autoStart: termList[i].autoStart || false
@@ -59,6 +67,7 @@ PlasmoidItem {
         }
         if (configs.length === 0) {
             configs.push({
+                key: "name:Terminal",
                 name: "Terminal",
                 command: "/bin/bash",
                 workingDirectory: "",
@@ -74,13 +83,13 @@ PlasmoidItem {
         let configs = buildConfigs();
         for (let i = 0; i < configs.length; i++) {
             sessionsModel.append({
+                key: configs[i].key,
                 name: configs[i].name,
                 command: configs[i].command,
                 workingDirectory: configs[i].workingDirectory,
                 icon: configs[i].icon,
                 autoStart: configs[i].autoStart,
-                sessionState: stateDead,
-                exitCode: -1
+                sessionState: stateDead
             });
         }
         activeSessionIndex = 0;
@@ -90,43 +99,59 @@ PlasmoidItem {
     function reconcileSessions() {
         let newConfigs = buildConfigs();
 
+        // Sessions started before their config entry had an id are keyed by name.
+        // Re-key them so the one-time id migration adopts the running process
+        // instead of dropping it below. Removable once no pre-id configs remain.
+        for (let j = 0; j < newConfigs.length; j++) {
+            if (newConfigs[j].key.indexOf("id:") !== 0)
+                continue;
+            for (let k = 0; k < sessionsModel.count; k++) {
+                if (sessionsModel.get(k).key === "name:" + newConfigs[j].name) {
+                    sessionsModel.setProperty(k, "key", newConfigs[j].key);
+                    break;
+                }
+            }
+        }
+
         for (let i = sessionsModel.count - 1; i >= 0; i--) {
             let existing = sessionsModel.get(i);
             let found = false;
             for (let j = 0; j < newConfigs.length; j++) {
-                if (newConfigs[j].name === existing.name) {
+                if (newConfigs[j].key === existing.key) {
                     found = true;
                     break;
                 }
             }
-            if (!found) {
-                let item = sessionsRepeater.itemAt(i);
-                if (item)
-                    item.shutdownKPart();
+            // Removing the row destroys the delegate, and TerminalSession's
+            // Component.onDestruction shuts its KPart down.
+            if (!found)
                 sessionsModel.remove(i);
-            }
         }
 
         for (let j = 0; j < newConfigs.length; j++) {
             let nc = newConfigs[j];
             let existingIndex = -1;
             for (let k = j; k < sessionsModel.count; k++) {
-                if (sessionsModel.get(k).name === nc.name) {
+                if (sessionsModel.get(k).key === nc.key) {
                     existingIndex = k;
                     break;
                 }
             }
             if (existingIndex === -1) {
                 sessionsModel.append({
+                    key: nc.key,
                     name: nc.name,
                     command: nc.command,
                     workingDirectory: nc.workingDirectory,
                     icon: nc.icon,
                     autoStart: nc.autoStart,
-                    sessionState: stateDead,
-                    exitCode: -1
+                    sessionState: stateDead
                 });
             } else {
+                // A command edit lands in the model but does not kill a running
+                // process — it takes effect on the next start.
+                sessionsModel.setProperty(existingIndex, "name", nc.name);
+                sessionsModel.setProperty(existingIndex, "command", nc.command);
                 sessionsModel.setProperty(existingIndex, "icon", nc.icon);
                 sessionsModel.setProperty(existingIndex, "workingDirectory", nc.workingDirectory);
                 sessionsModel.setProperty(existingIndex, "autoStart", nc.autoStart);
@@ -160,19 +185,24 @@ PlasmoidItem {
     }
 
     function launchSession(index) {
+        // Setting the state to Running is what starts the KPart: TerminalSession
+        // reacts to it. The delegate itself is unreachable from here — its
+        // Repeater id lives in the fullRepresentation component scope — and when
+        // the popup does not exist yet, its Component.onCompleted picks the
+        // session up instead.
         setSessionState(index, stateRunning);
         activeSessionIndex = index;
         if (!expanded)
             expanded = true;
-        if (typeof sessionsRepeater !== "undefined" && sessionsRepeater) {
-            let item = sessionsRepeater.itemAt(index);
-            if (item)
-                item.startTerminal();
-        }
     }
 
     Component.onCompleted: {
+        pluginAvailable = Utils.hasTerminalPlugin(root);
         initSessions();
+        if (!pluginAvailable) {
+            console.warn("Termibar: org.termibar plugin not found — run install.sh");
+            return;
+        }
         for (let i = 0; i < sessionsModel.count; i++) {
             if (sessionsModel.get(i).autoStart) {
                 launchSession(i);
@@ -249,8 +279,13 @@ PlasmoidItem {
     fullRepresentation: PlasmaExtras.Representation {
         id: popupRoot
 
-        Layout.preferredWidth: Kirigami.Units.gridUnit * Plasmoid.configuration.terminalColumns * 0.35
-        Layout.preferredHeight: Kirigami.Units.gridUnit * Plasmoid.configuration.terminalRows * 0.75
+        readonly property int configuredWidth: Math.round(Kirigami.Units.gridUnit * Plasmoid.configuration.terminalColumns * 0.35)
+        readonly property int configuredHeight: Math.round(Kirigami.Units.gridUnit * Plasmoid.configuration.terminalRows * 0.75)
+
+        // Only used for the very first open of a fresh widget; after that Plasma
+        // has a saved size and ignores these (see applyPopupSize).
+        Layout.preferredWidth: popupRoot.configuredWidth
+        Layout.preferredHeight: popupRoot.configuredHeight
         Layout.minimumWidth: Kirigami.Units.gridUnit * 12
         Layout.minimumHeight: Kirigami.Units.gridUnit * 8
 
@@ -262,18 +297,44 @@ PlasmoidItem {
                 win.animated = false;
             }
         }
+
+        // AppletPopup writes popupWidth/popupHeight into the applet config on
+        // every hide, and once such a size exists its updateSize() returns early
+        // and never looks at Layout.preferredWidth/Height again. So the configured
+        // size has to be pushed onto the popup window itself, on every open.
+        // Consequence: dragging the popup edge works but is not remembered.
+        function applyPopupSize() {
+            let win = popupRoot.Window.window;
+            if (!win)
+                return;
+            win.width = popupRoot.configuredWidth;
+            win.height = popupRoot.configuredHeight;
+        }
+
+        // Sessions autostarted before the popup existed start themselves: each
+        // TerminalSession checks its state once its own bindings are ready.
         Component.onCompleted: {
             applyAnimationSetting();
-            // Start any sessions that were autostarted before the popup existed
-            for (let i = 0; i < sessionsModel.count; i++) {
-                if (sessionsModel.get(i).sessionState === root.stateRunning) {
-                    let item = sessionsRepeater.itemAt(i);
-                    if (item)
-                        item.startTerminal();
-                }
+            applyPopupSize();
+        }
+        onWindowChanged: {
+            applyAnimationSetting();
+            applyPopupSize();
+        }
+        onConfiguredWidthChanged: applyPopupSize()
+        onConfiguredHeightChanged: applyPopupSize()
+
+        // The popup window outlives a single open/close cycle, so the handlers
+        // above only ever fire once. Plasma restores its saved size on each show
+        // (including a size the user dragged to), which is why the configured
+        // size has to be re-applied every time the popup becomes visible.
+        Connections {
+            target: popupRoot.Window.window
+            function onVisibleChanged(visible) {
+                if (visible)
+                    popupRoot.applyPopupSize();
             }
         }
-        onWindowChanged: applyAnimationSetting()
 
         header: PlasmaExtras.PlasmoidHeading {
             visible: sessionsModel.count > 1
@@ -334,31 +395,72 @@ PlasmoidItem {
             }
         }
 
-        contentItem: StackLayout {
-            id: terminalStack
-            currentIndex: root.activeSessionIndex
+        // Without the native plugin TerminalSession.qml cannot even compile, so
+        // it must not be instantiated at all in that case.
+        contentItem: Loader {
+            sourceComponent: root.pluginAvailable ? sessionsView : missingPluginView
+        }
 
-            Repeater {
-                id: sessionsRepeater
-                model: sessionsModel
+        Component {
+            id: sessionsView
 
-                TerminalSession {
-                    isActive: root.activeSessionIndex === index
-                    fontFamily: Plasmoid.configuration.fontFamily
-                    fontSize: Plasmoid.configuration.fontSize
+            StackLayout {
+                id: terminalStack
+                currentIndex: root.activeSessionIndex
 
-                    onExited: code => {
-                        root.setSessionState(sessionIndex, root.stateExited);
-                        sessionsModel.setProperty(sessionIndex, "exitCode", code);
+                Repeater {
+                    id: sessionsRepeater
+                    model: sessionsModel
 
-                        if (Plasmoid.configuration.closeOnExit && sessionsModel.count <= 1) {
-                            root.expanded = false;
+                    TerminalSession {
+                        isActive: root.activeSessionIndex === index
+
+                        onExited: {
+                            root.setSessionState(sessionIndex, root.stateExited);
+
+                            if (Plasmoid.configuration.closeOnExit && sessionsModel.count <= 1) {
+                                root.expanded = false;
+                            }
+                        }
+                        onRestartRequested: {
+                            root.launchSession(sessionIndex);
                         }
                     }
-                    onRestartRequested: {
-                        root.launchSession(sessionIndex);
-                    }
                 }
+            }
+        }
+
+        Component {
+            id: missingPluginView
+
+            ColumnLayout {
+                spacing: Kirigami.Units.largeSpacing
+
+                Item { Layout.fillHeight: true }
+
+                Kirigami.Icon {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.large
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.large
+                    source: "dialog-error"
+                }
+
+                PlasmaComponents.Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: i18n("Terminal plugin not found")
+                }
+
+                PlasmaComponents.Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.gridUnit
+                    Layout.rightMargin: Kirigami.Units.gridUnit
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    opacity: 0.7
+                    text: i18n("Termibar needs its native QML plugin, which is not part of the widget package. Run install.sh from the Termibar source to build and install it.")
+                }
+
+                Item { Layout.fillHeight: true }
             }
         }
     }

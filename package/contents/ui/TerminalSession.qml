@@ -14,33 +14,38 @@ Item {
     required property string workingDirectory
     required property string icon
     required property int sessionState
-    required property int exitCode
 
     required property int index
     readonly property int sessionIndex: index
     required property bool isActive
-    property string fontFamily: "Monospace"
-    property int fontSize: 10
 
-    signal exited(int code)
+    signal exited
     signal restartRequested
 
     // 0=Dead, 1=Running, 2=Backgrounded, 3=Exited
     readonly property int currentState: sessionState
 
-    onCurrentStateChanged: {
+    // An autostarted session is already Running when its delegate is built, so
+    // the initial 0->1 binding evaluation fires onCurrentStateChanged mid-creation
+    // — before terminalItem's command binding has been evaluated. Starting there
+    // would hand KonsoleItem an empty command and launch a bare shell, and since
+    // start() is idempotent the correct call afterwards would do nothing. Wait for
+    // completion, which is the point where all bindings are in place.
+    property bool bindingsReady: false
+
+    Component.onCompleted: {
+        bindingsReady = true;
         if (currentState === 1)
+            terminalItem.start();
+    }
+
+    onCurrentStateChanged: {
+        if (bindingsReady && currentState === 1)
             terminalItem.start();
     }
 
     function shutdownKPart() {
         terminalItem.shutdown();
-    }
-
-    function startTerminal(cmd) {
-        if (cmd)
-            terminalItem.command = cmd;
-        terminalItem.start();
     }
 
     // Covers both config-driven removal and plasmoid unload.
@@ -65,8 +70,7 @@ Item {
 
             PlasmaComponents.Label {
                 Layout.alignment: Qt.AlignHCenter
-                text: command
-                font.family: sessionRoot.fontFamily
+                text: command || i18n("Default shell")
                 opacity: 0.7
             }
 
@@ -90,7 +94,7 @@ Item {
         command: sessionRoot.command || "/bin/bash"
         workingDirectory: sessionRoot.workingDirectory || ""
 
-        onExited: code => sessionRoot.exited(code)
+        onExited: sessionRoot.exited()
     }
 
     // --- Exited: exit info + restart ---
@@ -120,14 +124,9 @@ Item {
 
                 PlasmaComponents.Label {
                     Layout.alignment: Qt.AlignHCenter
-                    text: {
-                        let code = exitCode;
-                        if (code === 0)
-                            return i18n("Process exited normally");
-                        if (code > 0)
-                            return i18n("Process exited with code %1", code);
-                        return i18n("Process terminated");
-                    }
+                    // KonsolePart reports no exit status — it just goes away when
+                    // the session ends — so there is no code to show here.
+                    text: i18n("Process exited")
                 }
 
                 PlasmaComponents.Button {

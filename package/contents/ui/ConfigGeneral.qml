@@ -4,17 +4,14 @@ import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
 import org.kde.kcmutils as KCM
 import org.kde.iconthemes as KIconThemes
-import QtQuick.Dialogs
 
 KCM.SimpleKCM {
     id: configRoot
 
     property alias cfg_terminalColumns: colsSpinbox.value
     property alias cfg_terminalRows: rowsSpinbox.value
-    property alias cfg_fontSize: fontSizeSpinbox.value
     property alias cfg_closeOnExit: closeOnExitCheck.checked
     property alias cfg_disableAnimation: disableAnimCheck.checked
-    property string cfg_fontFamily: "Monospace"
     property string cfg_iconName: "utilities-terminal"
 
     Kirigami.FormLayout {
@@ -42,43 +39,20 @@ KCM.SimpleKCM {
             Kirigami.FormData.label: i18n("Terminal")
         }
 
+        // These scale the popup only — the terminal's own rows/columns follow
+        // the popup size, and its font comes from the Konsole profile.
         QQC2.SpinBox {
             id: colsSpinbox
-            Kirigami.FormData.label: i18n("Columns:")
+            Kirigami.FormData.label: i18n("Popup width:")
             from: 40
             to: 300
         }
 
         QQC2.SpinBox {
             id: rowsSpinbox
-            Kirigami.FormData.label: i18n("Rows:")
+            Kirigami.FormData.label: i18n("Popup height:")
             from: 10
             to: 100
-        }
-
-        QQC2.Button {
-            id: fontButton
-            Kirigami.FormData.label: i18n("Font:")
-            text: cfg_fontFamily || "Monospace"
-            font.family: cfg_fontFamily || "Monospace"
-            onClicked: fontDialog.open()
-        }
-
-        FontDialog {
-            id: fontDialog
-            selectedFont.family: cfg_fontFamily || "Monospace"
-            selectedFont.pixelSize: cfg_fontSize
-            onAccepted: {
-                cfg_fontFamily = selectedFont.family;
-                cfg_fontSize = selectedFont.pixelSize > 0 ? selectedFont.pixelSize : selectedFont.pointSize;
-            }
-        }
-
-        QQC2.SpinBox {
-            id: fontSizeSpinbox
-            Kirigami.FormData.label: i18n("Font size:")
-            from: 6
-            to: 36
         }
 
         Kirigami.Separator {
